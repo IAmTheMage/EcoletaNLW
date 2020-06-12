@@ -7,9 +7,10 @@ class PointController {
     const parsedItems = String(items)
       .split(",")
       .map((item) => Number(item.trim()));
+    console.log(parsedItems);
     const points = await dbConnection("points")
       .join("points_items", "points_items.point_id", "=", "points.id")
-      .whereIn("points_items.item_id", parsedItems)
+      .whereIn("points_items.item_id", parsedItems || "1,2,3,4,5,6")
       .where("city", String(city))
       .where("uf", String(uf))
       .distinct()
@@ -45,28 +46,36 @@ class PointController {
       items,
     } = req.body;
     const transaction = await dbConnection.transaction();
-    const point = await transaction("points")
-      .insert({
-        name,
-        email,
-        whatsapp,
-        latitude,
-        longitude,
-        city,
-        uf,
-        image: req.file.filename,
-      })
-      .returning("id");
+    try {
+      const point = await transaction("points")
+        .insert({
+          name,
+          email,
+          whatsapp,
+          latitude,
+          longitude,
+          city,
+          uf,
+          image: req.file.filename,
+        })
+        .returning("id");
+      console.log(point[0]);
+      const pointItems = items
+        .split(",")
+        .map((item: string) => Number(item.trim()))
+        .map((item: number) => {
+          return {
+            item_id: item,
+            point_id: point[0],
+          };
+        });
 
-    const pointItems = items.map((item: number) => {
-      return {
-        point_id: point[0],
-        item_id: item,
-      };
-    });
-
-    await transaction("points_items").insert(pointItems);
-    return res.json({ point: point[0] });
+      await transaction("points_items").insert(pointItems);
+      await transaction.commit();
+      return res.json({ point: point[0] });
+    } catch (e) {
+      await transaction.rollback();
+    }
   }
 }
 
